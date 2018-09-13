@@ -7,48 +7,35 @@ module.exports = {
     let req = requestDetail,
       response = responseDetail.response,
       bodyStr = response.body.toString()
-    if (/mp\/profile_ext\?action=home/i.test(req.url)) {//当链接地址为公众号历史消息页面时(第二种页面形式)
+    if (/mp\/profile_ext\?action=home/i.test(req.url)) {//当链接地址为公众号历史消息页面时(第一种页面形式)
       try {
-        var reg = /var msgList = \'(.*?)\';/;//定义历史消息正则匹配规则（和第一种页面形式的正则不同）
-        var ret = reg.exec(bodyStr);//转换变量为string
-        var str = ret ? ret[1] : 'empty'
-
-        var reg2 = /window\.appmsg_token = \"(.*?)\";/;//定义历史消息正则匹配规则（和第一种页面形式的正则不同）
-        var ret2 = reg2.exec(bodyStr);//转换变量为string
-
-        var url = ret2 ? req.url + '&appmsg_token=' + ret2[1] : req.url
-
-        if (req.url.indexOf('next=news')>-1) {
-          return GetNextNews(str, url, response)
-        } else if (req.url.indexOf('next=dynamicSource')>-1){
-          return GetNextDynamicSource(str, url, response)
+        if (GetCookie(req.requestOptions.headers,'next')=='news') {
+          return GetNextNews(bodyStr, req.url, response)
+        } else if (GetCookie(req.requestOptions.headers,'next')=='dynamicSource'){
+          return GetNextDynamicSource(bodyStr, req.url, response)
         }
-        // return TestGetNext(req.url, response)
-
       } catch (e) {
       }
     } else if (/mp\/profile_ext\?action=getmsg/i.test(req.url)) {//第二种页面表现形式的向下翻页后的json
       try {
-        var json = JSON.parse(bodyStr);
-        if (json.general_msg_list != []) {
-
-          if (req.url.indexOf('next=news')>-1) {
-            return GetNextNews(json.general_msg_list, req.url, response)
-          } else if (req.url.indexOf('next=dynamicSource')>-1){
-            return GetNextDynamicSource(json.general_msg_list, req.url, response)
-          }
+        if (GetCookie(req.requestOptions.headers,'next')=='news') {
+          return GetNextNews(bodyStr, req.url, response)
+        } else if (GetCookie(req.requestOptions.headers,'next')=='dynamicSource'){
+          return GetNextDynamicSource(bodyStr, req.url, response)
         }
       } catch (e) {
       }
     } else if (/beginNews/i.test(req.url)) {
       try {
-        var url = req.url + '?next=news'
+        let url = req.url
+        SetCookie(response.header,'next','news')
         return GetNextNews('', url, response)
       } catch (e) {
       }
     } else if (/beginDynamicSource/i.test(req.url)) {
       try {
-        var url = req.url + '?next=dynamicSource'
+        let url = req.url
+        SetCookie(response.header,'next','dynamicSource')
         return GetNextDynamicSource('', url, response)
       } catch (e) {
       }
@@ -59,10 +46,29 @@ module.exports = {
   }
 };
 
+function SetCookie(header,key,value){
+  let str=[`${key}=${value};`];
+  if (header['Set-Cookie']) {
+    header['Set-Cookie']=header['Set-Cookie'].concat(str)
+  }else{
+    header['Set-Cookie']=str
+  }
+}
+function GetCookie(header,key){
+  let reg =new RegExp(key + "=(.*?);"); 
+  let res=reg.exec(header.Cookie);
+  return res?res[1]:''
+}
+
 
 function GetNextNews(str, url, response) {
-  return HttpPost(str, url, '/test/spider').then(function (content) {
-    response.body = content
+  return HttpPost(str, url, '/test/spider').then(function (data) {
+    response.body = data.body
+    if (response.header['Set-Cookie']) {
+      response.header['Set-Cookie']=response.header['Set-Cookie'].concat(data.setCookie)
+    }else{
+      response.header['Set-Cookie']=data.setCookie
+    }
     response.header['Content-Type'] = 'text/html; charset=UTF-8'
     response.statusCode = 200
     return {
@@ -71,8 +77,13 @@ function GetNextNews(str, url, response) {
   })
 }
 function GetNextDynamicSource(str, url, response) {
-  return HttpPost(str, url, '/test/dynamic-spider').then(function (content) {
-    response.body = content
+  return HttpPost(str, url, '/test/dynamic-spider').then(function (data) {
+    response.body = data.body
+    if (response.header['Set-Cookie']) {
+      response.header['Set-Cookie']=response.header['Set-Cookie'].concat(data.setCookie)
+    }else{
+      response.header['Set-Cookie']=data.setCookie
+    }
     response.header['Content-Type'] = 'text/html; charset=UTF-8'
     response.statusCode = 200
     return {
@@ -83,13 +94,13 @@ function GetNextDynamicSource(str, url, response) {
 
 function HttpPost(str, url, path) {//将json发送到服务器，str为json内容，url为历史消息页面地址，path是接收程序的路径和文件名
   return new Promise(function (resolve, rej) {
-    var http = require('http');
-    var data = {
+    let http = require('http');
+    let data = {
       str: str,
       url: url
     };
     content = JSON.stringify(data);
-    var options = {
+    let options = {
       method: "POST",
       host: env.host,
       port: 80,
@@ -99,10 +110,17 @@ function HttpPost(str, url, path) {//将json发送到服务器，str为json内�
         "Content-Length": Buffer.byteLength(content)
       }
     };
-    var req = http.request(options, function (res) {
+    let req = http.request(options, function (res) {
       res.setEncoding('utf8');
       res.on('data', function (chunk) {
-        resolve(chunk + '')
+        let setCookie=res.headers['set-cookie']
+        setCookie=setCookie?setCookie:[]
+        for (const i in setCookie) {
+          if (!setCookie[i].endsWith(';')) {
+            setCookie[i]+=';'
+          }
+        }
+        resolve({body:chunk + '',setCookie:setCookie})
       });
     });
     req.on('error', function (e) {
