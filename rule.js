@@ -79,7 +79,7 @@ function GetCookie(header, key) {
 
 
 function GetNextNews(str, url, response) {
-  return HttpPost(str, url, '/spiders/wechatspider').then(function (data) {
+  return HttpPost(str, url, '/spiders/wechatspider/news').then(function (data) {
     response.body = data.body
     if (response.header['Set-Cookie']) {
       response.header['Set-Cookie'] = response.header['Set-Cookie'].concat(data.setCookie)
@@ -94,7 +94,7 @@ function GetNextNews(str, url, response) {
   })
 }
 function GetNextDynamicSource(str, url, response) {
-  return HttpPost(str, url, '/test/dynamic-spider').then(function (data) {
+  return HttpPost(str, url, '/spiders/wechatspider/dynamic').then(function (data) {
     response.body = data.body
     if (response.header['Set-Cookie']) {
       response.header['Set-Cookie'] = response.header['Set-Cookie'].concat(data.setCookie)
@@ -119,8 +119,8 @@ function HttpPost(str, url, path) {//将json发送到服务器，str为json内�
     content = JSON.stringify(data);
     let options = {
       method: "POST",
-      host: env.host,
-      port: 8088,
+      host: env.apihost,
+      port: env.apiport,
       path: path,//接收程序的路径和文件名
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
